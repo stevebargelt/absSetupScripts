@@ -1,0 +1,215 @@
+#!/bin/bash
+
+versionSuffix="" #for testing and rapidly creating multiple versions for tutorial
+
+azureAccountName="Visual Studio Enterprise"
+
+#Resource group info
+rgName="dockerBuild$versionSuffix"
+location="westus"
+
+# Set variables for VNet
+vnetName="dockerBuildvnet"
+vnetPrefix="10.0.0.0/16"
+subnetName="default"
+subnetPrefix="10.0.0.0/24"
+
+# Set variables for storage
+stdStorageAccountName="dockerbuildstorage$versionSuffix"
+
+# Set variables for VM
+vmSize="Standard_DS1_V2"
+publisher="Canonical"
+offer="UbuntuServer"
+sku="16.04.0-LTS"
+version="latest"
+vmName="dockerBuild"
+nicName="dockerbuildNIC"
+privateIPAddress="10.0.0.4"
+pipName="dockerBuild-ip"
+nsgName="dockerBuild-nsg"
+osDiskName="osdisk"
+
+#VM Admin user information
+username="dockeruser"
+adminKeyPairName="id_${vmName}_rsa"
+
+#DNS Naming
+dnsName="dockerbuildsystem$versionSuffix"
+fullDnsName="$dnsName.westus.cloudapp.azure.com"
+customDnsName="dockerbuild.harebrained-apps.com"
+
+#where to place the remote Docker Host TLS certs
+tlsCertLocation="./certs/$rgName"
+rsaKeysLocation="./keys/$rgName"
+
+SCRIPTS_LOCATION=$PWD
+set -x
+
+RUNNING=$(docker inspect --format="{{ .State.Running }}" azureCli 2> /dev/null)
+
+if [ $? -eq 1 ]; then
+  	echo "azureCli does not exist. Executing docker run"
+	docker run -td --name azureCli -v $SCRIPTS_LOCATION:/config microsoft/azure-cli
+	
+	docker exec -it azureCli azure login  
+fi
+
+if [ "$RUNNING" == "false" ]; then
+  	echo "azureCli is not running. Executing docker start"
+      #should START here
+	docker start azureCli
+	
+	docker exec -it azureCli azure login  
+fi
+
+printf "=> Creating admin SSH keypair: $rsaKeysLocation/$adminKeyPairName <="
+mkdir -p $rsaKeysLocation
+ssh-keygen -t rsa -b 2048 -C "$username@Azure-$rgName-$vmName" -f "$rsaKeysLocation/$adminKeyPairName" -q -N ""
+
+#TODO Errors
+set -xe
+
+docker exec -it azureCli azure account set "$azureAccountName"
+
+echo "=> Create resource group <="
+# Create Resource Group
+docker exec -it azureCli azure group create $rgName $location
+
+echo "=> Create  VNet <="
+docker exec -it azureCli azure network vnet create --resource-group $rgName \
+    --name $vnetName \
+    --address-prefixes $vnetPrefix \
+    --location $location
+
+echo "=> Create  subnet <="
+docker exec -it azureCli azure network vnet subnet create --resource-group $rgName \
+    --vnet-name $vnetName \
+    --name $subnetName \
+	--address-prefix $subnetPrefix
+
+echo "=> Create Public IP <="
+docker exec -it azureCli azure network public-ip create --resource-group $rgName \
+    --name $pipName \
+    --location $location \
+    --allocation-method Static \
+    --domain-name-label $dnsName \
+	--idle-timeout 4 \
+	--ip-version IPv4
+
+echo "=> Create NIC <="
+docker exec -it azureCli azure network nic create --name $nicName \
+    --resource-group $rgName \
+    --location $location \
+    --private-ip-address $privateIPAddress \
+	--subnet-vnet-name $vnetName \
+    --public-ip-name $pipName \
+	--subnet-name default
+
+echo "=> Create network security group <="
+docker exec -it azureCli azure network nsg create --resource-group $rgName \
+    --name $nsgName \
+    --location $location
+
+echo "=> Create inbound security rules <="
+echo "=> Create allow-ssh rule <="
+docker exec -it azureCli azure network nsg rule create --protocol tcp \
+    --direction inbound \
+    --priority 1000 \
+    --destination-port-range 22 \
+    --access allow \
+    --resource-group $rgName \
+    --nsg-name $nsgName \
+    --name allow-ssh
+
+echo "=> Create allow-http rule <="
+docker exec -it azureCli azure network nsg rule create --protocol tcp \
+    --direction inbound \
+    --priority 1010 \
+    --destination-port-range 80 \
+    --access allow \
+    --resource-group $rgName \
+    --nsg-name $nsgName \
+    --name allow-http
+
+echo "=> Create allow-docker-tls rule  <="
+docker exec -it azureCli azure network nsg rule create --protocol tcp \
+    --direction inbound \
+    --priority 1020 \
+    --destination-port-range 2376 \
+    --access allow \
+    --resource-group $rgName \
+    --nsg-name $nsgName \
+    --name allow-docker-tls
+
+# echo "=> Create allow-jenkins-jnlp rule  <="
+# docker exec -it azureCli azure network nsg rule create --protocol tcp \
+#     --direction inbound \
+#     --priority 1030 \
+#     --destination-port-range 50000 \
+#     --access allow \
+#     --resource-group $rgName \
+#     --nsg-name $nsgName \
+#     --name allow-jenkins-JNLP
+
+# echo "=> Create allow-docker-registry rule  <="
+# docker exec -it azureCli azure network nsg rule create --protocol tcp \
+#     --direction inbound \
+#     --priority 1040 \
+#     --destination-port-range 5000 \
+#     --access allow \
+#     --resource-group $rgName \
+#     --nsg-name $nsgName \
+#     --name allow-docker-registry
+
+# docker exec -it azureCli azure network nsg rule create --protocol tcp \
+#     --direction inbound \
+#     --priority 1050 \
+#     --destination-port-range 443 \
+#     --access allow \
+#     --resource-group dockerBuild \
+#     --nsg-name dockerBuild-nsg \
+#     --name allow-https
+
+echo "=> Bind the NSG to the NIC <="
+docker exec -it azureCli azure network nic set \
+    --resource-group $rgName \
+    --name $nicName \
+    --network-security-group-name $nsgName
+
+echo "=> Create the VM <="
+docker exec -it azureCli azure vm create --resource-group $rgName \
+    --name $vmName \
+    --location $location \
+    --vm-size $vmSize \
+    --vnet-name $vnetName \
+    --vnet-address-prefix $vnetPrefix \
+    --vnet-subnet-name $subnetName \
+    --vnet-subnet-address-prefix $subnetPrefix \
+    --nic-name $nicName \
+    --os-type linux \
+    --image-urn $publisher:$offer:$sku:$version \
+    --storage-account-name $stdStorageAccountName \
+	--storage-account-container-name vhds \
+    --os-disk-vhd $osDiskName.vhd \
+    --admin-username $username \
+    --ssh-publickey-file "/config/$rsaKeysLocation/$adminKeyPairName.pub"
+
+publicIPAddress=$(docker exec -it azureCli azure vm show $rgName $vmName |grep "Public IP address" | awk -F ":" '{print $3}' |tr -d '\r')
+
+echo "PublicIP:$publicIPAddress"
+
+printf "=> Installing Docker Extension will fail unless we run an apt-get update in the VM <="
+ssh -o StrictHostKeyChecking=no $username@$fullDnsName -i "$rsaKeysLocation/$adminKeyPairName" "sudo apt-get update" 
+
+printf "=> create docker tls certs <="
+mkdir -p "$tlsCertLocation"
+sh create-docker-tls.sh $customDnsName $fullDnsName $publicIPAddress $privateIPAddress $tlsCertLocation
+
+printf "=> Add Docker extension to VM <="
+sh add-docker-ext.sh $rgName $vmName $tlsCertLocation
+
+printf "=> Finished <=\n"
+printf "Connect to docker:\n"
+printf "cd $tlsCertLocation"
+printf "DO THIS: docker --tlsverify --tlscacert=ca.pem --tlscert=cert.pem --tlskey=key.pem -H=tcp://$publicIPAddress:2376 version"
