@@ -46,6 +46,7 @@ rsaKeysLocation="./keys/$rgName"
 SCRIPTS_LOCATION=$PWD
 set -x
 
+#TODO: the docker running/stopped/non-existant code could use updating
 RUNNING=$(docker inspect --format="{{ .State.Running }}" azureCli 2> /dev/null)
 
 if [ $? -eq 1 ]; then
@@ -162,6 +163,7 @@ docker exec -it azureCli azure network nsg rule create --protocol tcp \
 #     --nsg-name $nsgName \
 #     --name allow-docker-registry
 
+# echo "=> Create allow-https rule  <="
 # docker exec -it azureCli azure network nsg rule create --protocol tcp \
 #     --direction inbound \
 #     --priority 1050 \
