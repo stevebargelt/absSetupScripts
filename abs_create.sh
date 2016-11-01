@@ -1,21 +1,44 @@
 #!/bin/bash
 
-versionSuffix="" #for testing and rapidly creating multiple versions for tutorial
+########################################################
+#### Change the following to customize your install ####
+########################################################
 
-azureAccountName="Visual Studio Enterprise"
+#this will be the name of the resource group and the VM + all other compoents will use this as the base of their names
+baseName="dockerBuild" 
 
-#Resource group info
-rgName="dockerBuild$versionSuffix"
+# for testing and rapidly creating multiple versions for tutorials or testing. Script will create something like dockerBuild01 <- given a suffix of 01 and a baseName of docekrBuild
+versionSuffix="" 
+
+#The Azure location for your resources
 location="westus"
 
+#Your Azure account name.
+azureAccountName="Visual Studio Enterprise"
+
+#VM Admin user information
+username="dockeruser"
+
+#custom dns name
+customDNSbase="harebrained-apps.com"
+
+########################################################
+#### The remainder can be changed but not required  ####
+########################################################
+
+#Resource group info
+rgName="$baseName$versionSuffix"
+
 # Set variables for VNet
-vnetName="dockerBuildvnet"
+vnetName="${baseName}vnet"
 vnetPrefix="10.0.0.0/16"
 subnetName="default"
 subnetPrefix="10.0.0.0/24"
 
+#storage account names can't have upppercase letters
+baseNameLower=echo "$baseName" | tr '[:upper:]' '[:lower:]'
 # Set variables for storage
-stdStorageAccountName="dockerbuildstorage$versionSuffix"
+stdStorageAccountName="${baseNameLower}storage$versionSuffix"
 
 # Set variables for VM
 vmSize="Standard_DS1_V2"
@@ -23,21 +46,20 @@ publisher="Canonical"
 offer="UbuntuServer"
 sku="16.04.0-LTS"
 version="latest"
-vmName="dockerBuild"
-nicName="dockerbuildNIC"
+vmName="${baseName}"
+nicName="${baseName}NIC"
 privateIPAddress="10.0.0.4"
-pipName="dockerBuild-ip"
-nsgName="dockerBuild-nsg"
+pipName="${baseName}-ip"
+nsgName="${baseName}-nsg"
 osDiskName="osdisk"
 
 #VM Admin user information
-username="dockeruser"
 adminKeyPairName="id_${vmName}_rsa"
 
 #DNS Naming
-dnsName="dockerbuildsystem$versionSuffix"
-fullDnsName="$dnsName.westus.cloudapp.azure.com"
-customDnsName="dockerbuild.harebrained-apps.com"
+dnsName="${baseName}-system$versionSuffix"
+fullDnsName="${dnsName}.${location}.cloudapp.azure.com"
+customDnsName="${baseName}.$customDnsBase"
 
 #where to place the remote Docker Host TLS certs
 tlsCertLocation="./certs/$rgName"
@@ -50,7 +72,7 @@ set -x
 RUNNING=$(docker inspect --format="{{ .State.Running }}" azureCli 2> /dev/null)
 
 if [ $? -eq 1 ]; then
-  	echo "azureCli does not exist. Executing docker run"
+  	echo "azureCli container does not exist. Executing docker run"
 	docker run -td --name azureCli -v $SCRIPTS_LOCATION:/config microsoft/azure-cli
 	
 	docker exec -it azureCli azure login  
@@ -64,6 +86,7 @@ if [ "$RUNNING" == "false" ]; then
 	docker exec -it azureCli azure login  
 fi
 
+#Please store the private key securly once this is done!
 printf "=> Creating admin SSH keypair: $rsaKeysLocation/$adminKeyPairName <="
 mkdir -p $rsaKeysLocation
 ssh-keygen -t rsa -b 2048 -C "$username@Azure-$rgName-$vmName" -f "$rsaKeysLocation/$adminKeyPairName" -q -N ""
@@ -169,8 +192,8 @@ docker exec -it azureCli azure network nsg rule create --protocol tcp \
 #     --priority 1050 \
 #     --destination-port-range 443 \
 #     --access allow \
-#     --resource-group dockerBuild \
-#     --nsg-name dockerBuild-nsg \
+#     --resource-group $rgName \
+#     --nsg-name $nsgName \
 #     --name allow-https
 
 echo "=> Bind the NSG to the NIC <="
