@@ -7,7 +7,7 @@
 #this will be the name of the resource group and the VM + all other compoents will use this as the base of their names
 baseName="dockerBuild" 
 
-# for testing and rapidly creating multiple versions for tutorials or testing. Script will create something like dockerBuild01 <- given a suffix of 01 and a baseName of docekrBuild
+# for testing and rapidly creating multiple versions for tutorials or testing. Script will create something like dockerBuild01 <- given a suffix of 01 and a baseName of dockerBuild
 versionSuffix="" 
 
 #The Azure location for your resources
@@ -20,11 +20,17 @@ azureAccountName="Visual Studio Enterprise"
 username="dockeruser"
 
 #custom dns name
-customDNSbase="harebrained-apps.com"
+customDnsBase="harebrained-apps.com"
 
 ########################################################
 #### The remainder can be changed but not required  ####
 ########################################################
+
+#dns names and storage account names can't have upppercase letters
+baseNameLower=$(echo "$baseName" | tr '[:upper:]' '[:lower:]')
+
+echo "=> basenamelower <="
+echo $baseNameLower
 
 #Resource group info
 rgName="$baseName$versionSuffix"
@@ -35,8 +41,6 @@ vnetPrefix="10.0.0.0/16"
 subnetName="default"
 subnetPrefix="10.0.0.0/24"
 
-#storage account names can't have upppercase letters
-baseNameLower=echo "$baseName" | tr '[:upper:]' '[:lower:]'
 # Set variables for storage
 stdStorageAccountName="${baseNameLower}storage$versionSuffix"
 
@@ -57,16 +61,19 @@ osDiskName="osdisk"
 adminKeyPairName="id_${vmName}_rsa"
 
 #DNS Naming
-dnsName="${baseName}-system$versionSuffix"
+dnsName="${baseNameLower}system$versionSuffix"
 fullDnsName="${dnsName}.${location}.cloudapp.azure.com"
-customDnsName="${baseName}.$customDnsBase"
+customDnsName="${baseNameLower}.$customDnsBase"
 
 #where to place the remote Docker Host TLS certs
 tlsCertLocation="./certs/$rgName"
 rsaKeysLocation="./keys/$rgName"
 
 SCRIPTS_LOCATION=$PWD
-set -x
+
+########################################################
+#### The script actually begins...                  ####
+########################################################
 
 #TODO: the docker running/stopped/non-existant code could use updating
 RUNNING=$(docker inspect --format="{{ .State.Running }}" azureCli 2> /dev/null)
@@ -91,7 +98,6 @@ printf "=> Creating admin SSH keypair: $rsaKeysLocation/$adminKeyPairName <="
 mkdir -p $rsaKeysLocation
 ssh-keygen -t rsa -b 2048 -C "$username@Azure-$rgName-$vmName" -f "$rsaKeysLocation/$adminKeyPairName" -q -N ""
 
-#TODO Errors
 set -xe
 
 docker exec -it azureCli azure account set "$azureAccountName"
@@ -166,41 +172,44 @@ docker exec -it azureCli azure network nsg rule create --protocol tcp \
     --nsg-name $nsgName \
     --name allow-docker-tls
 
-# echo "=> Create allow-jenkins-jnlp rule  <="
-# docker exec -it azureCli azure network nsg rule create --protocol tcp \
-#     --direction inbound \
-#     --priority 1030 \
-#     --destination-port-range 50000 \
-#     --access allow \
-#     --resource-group $rgName \
-#     --nsg-name $nsgName \
-#     --name allow-jenkins-JNLP
+echo "=> Create allow-jenkins-jnlp rule  <="
+docker exec -it azureCli azure network nsg rule create --protocol tcp \
+    --direction inbound \
+    --priority 1030 \
+    --destination-port-range 50000 \
+    --access allow \
+    --resource-group $rgName \
+    --nsg-name $nsgName \
+    --name allow-jenkins-JNLP
 
-# echo "=> Create allow-docker-registry rule  <="
-# docker exec -it azureCli azure network nsg rule create --protocol tcp \
-#     --direction inbound \
-#     --priority 1040 \
-#     --destination-port-range 5000 \
-#     --access allow \
-#     --resource-group $rgName \
-#     --nsg-name $nsgName \
-#     --name allow-docker-registry
+echo "=> Create allow-docker-registry rule  <="
+docker exec -it azureCli azure network nsg rule create --protocol tcp \
+    --direction inbound \
+    --priority 1040 \
+    --destination-port-range 5000 \
+    --access allow \
+    --resource-group $rgName \
+    --nsg-name $nsgName \
+    --name allow-docker-registry
 
-# echo "=> Create allow-https rule  <="
-# docker exec -it azureCli azure network nsg rule create --protocol tcp \
-#     --direction inbound \
-#     --priority 1050 \
-#     --destination-port-range 443 \
-#     --access allow \
-#     --resource-group $rgName \
-#     --nsg-name $nsgName \
-#     --name allow-https
+echo "=> Create allow-https rule  <="
+docker exec -it azureCli azure network nsg rule create --protocol tcp \
+    --direction inbound \
+    --priority 1050 \
+    --destination-port-range 443 \
+    --access allow \
+    --resource-group $rgName \
+    --nsg-name $nsgName \
+    --name allow-https
 
 echo "=> Bind the NSG to the NIC <="
 docker exec -it azureCli azure network nic set \
     --resource-group $rgName \
     --name $nicName \
     --network-security-group-name $nsgName
+
+echo "=> Create the Docker Registry Blob Storage <="
+docker exec -it azureCli azure storage account create --resource-group $rgName --kind BlobStorage --sku-name LRS --access-tier Hot --location $location ${baseNameLower}${versionSuffix}registry
 
 echo "=> Create the VM <="
 docker exec -it azureCli azure vm create --resource-group $rgName \
@@ -214,11 +223,14 @@ docker exec -it azureCli azure vm create --resource-group $rgName \
     --nic-name $nicName \
     --os-type linux \
     --image-urn $publisher:$offer:$sku:$version \
-    --storage-account-name $stdStorageAccountName \
 	--storage-account-container-name vhds \
     --os-disk-vhd $osDiskName.vhd \
     --admin-username $username \
     --ssh-publickey-file "/config/$rsaKeysLocation/$adminKeyPairName.pub"
+
+# removed because names need to be unique and this kept failing
+# azure assigns random name if omitted
+#    --storage-account-name $stdStorageAccountName \
 
 publicIPAddress=$(docker exec -it azureCli azure vm show $rgName $vmName |grep "Public IP address" | awk -F ":" '{print $3}' |tr -d '\r')
 
