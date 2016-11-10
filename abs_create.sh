@@ -85,7 +85,7 @@ if [ $? -eq 1 ]; then
 	docker exec -it azureCli azure login  
 fi
 
-if [ "$RUNNING" == "false" ]; then
+if [ "$RUNNING" == false ]; then
   	echo "azureCli is not running. Executing docker start"
       #should START here
 	docker start azureCli
