@@ -182,6 +182,7 @@ docker exec -it azureCli azure network nsg rule create --protocol tcp \
     --nsg-name $nsgName \
     --name allow-jenkins-JNLP
 
+# Added the two following rules in part three of tutorial 
 echo "=> Create allow-docker-registry rule  <="
 docker exec -it azureCli azure network nsg rule create --protocol tcp \
     --direction inbound \
@@ -208,6 +209,7 @@ docker exec -it azureCli azure network nic set \
     --name $nicName \
     --network-security-group-name $nsgName
 
+#Added the registry blob storage in part 3 of the tutorial
 echo "=> Create the Docker Registry Blob Storage <="
 docker exec -it azureCli azure storage account create --resource-group $rgName --kind BlobStorage --sku-name LRS --access-tier Hot --location $location ${baseNameLower}${versionSuffix}registry
 
