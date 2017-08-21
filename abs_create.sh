@@ -11,7 +11,7 @@ baseName="dockerBuild"
 versionSuffix="" 
 
 #The Azure location for your resources
-location="westus"
+location="eastus"
 
 #Your Azure account name.
 azureAccountName="Visual Studio Enterprise"
@@ -42,7 +42,7 @@ subnetName="default"
 subnetPrefix="10.0.0.0/24"
 
 # Set variables for storage
-stdStorageAccountName="${baseNameLower}storage$versionSuffix"
+stdStorageAccountName="${baseNameLower}storage${versionSuffix}${RANDOM}"
 
 # Set variables for VM
 vmSize="Standard_DS1_V2"
@@ -211,7 +211,12 @@ docker exec -it azureCli azure network nic set \
 
 #Added the registry blob storage in part 3 of the tutorial
 echo "=> Create the Docker Registry Blob Storage <="
-docker exec -it azureCli azure storage account create --resource-group $rgName --kind BlobStorage --sku-name LRS --access-tier Hot --location $location ${baseNameLower}${versionSuffix}registry
+docker exec -it azureCli azure storage account create \
+    --resource-group $rgName \
+    --kind BlobStorage \
+    --sku-name LRS \
+    --access-tier Hot \
+    --location $location ${baseNameLower}${versionSuffix}registry${RANDOM}
 
 echo "=> Create the VM <="
 docker exec -it azureCli azure vm create --resource-group $rgName \
@@ -228,11 +233,8 @@ docker exec -it azureCli azure vm create --resource-group $rgName \
 	--storage-account-container-name vhds \
     --os-disk-vhd $osDiskName.vhd \
     --admin-username $username \
-    --ssh-publickey-file "/config/$rsaKeysLocation/$adminKeyPairName.pub"
-
-# removed because names need to be unique and this kept failing
-# azure assigns random name if omitted
-#    --storage-account-name $stdStorageAccountName \
+    --ssh-publickey-file "/config/$rsaKeysLocation/$adminKeyPairName.pub" \
+    --storage-account-name $stdStorageAccountName
 
 publicIPAddress=$(docker exec -it azureCli azure vm show $rgName $vmName |grep "Public IP address" | awk -F ":" '{print $3}' |tr -d '\r')
 
