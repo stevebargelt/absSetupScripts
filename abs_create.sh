@@ -8,7 +8,11 @@
 baseName="dockerBuild" 
 
 # for testing and rapidly creating multiple versions for tutorials or testing. Script will create something like dockerBuild01 <- given a suffix of 01 and a baseName of dockerBuild
-versionSuffix="" 
+versionSuffix=""
+
+#Storage accounts names must be unique. Adding a random number may help with that. Kept it to 3 
+#  digits because they also must be under 24 characters. Shoudl probs add some checks fof this.
+storageAccountRandom=$((100 + RANDOM % 899)) 
 
 #The Azure location for your resources
 location="eastus"
@@ -23,7 +27,7 @@ username="dockeruser"
 customDnsBase="harebrained-apps.com"
 
 ########################################################
-#### The remainder can be changed but not required  ####
+#### The remainder can be changed but not required  ####    
 ########################################################
 
 #dns names and storage account names can't have upppercase letters
@@ -42,7 +46,7 @@ subnetName="default"
 subnetPrefix="10.0.0.0/24"
 
 # Set variables for storage
-stdStorageAccountName="${baseNameLower}storage${versionSuffix}${RANDOM}"
+stdStorageAccountName="${baseNameLower}storage${versionSuffix}${storageAccountRandom}"
 
 # Set variables for VM
 vmSize="Standard_DS1_V2"
@@ -216,7 +220,7 @@ docker exec -it azureCli azure storage account create \
     --kind BlobStorage \
     --sku-name LRS \
     --access-tier Hot \
-    --location $location ${baseNameLower}${versionSuffix}registry${RANDOM}
+    --location $location ${baseNameLower}${versionSuffix}registry${storageAccountRandom}
 
 echo "=> Create the VM <="
 docker exec -it azureCli azure vm create --resource-group $rgName \
@@ -240,8 +244,8 @@ publicIPAddress=$(docker exec -it azureCli azure vm show $rgName $vmName |grep "
 
 echo "PublicIP:$publicIPAddress"
 
-printf "=> Installing Docker Extension will fail unless we run an apt-get update in the VM <="
-ssh -o StrictHostKeyChecking=no $username@$fullDnsName -i "$rsaKeysLocation/$adminKeyPairName" "sudo apt-get update" 
+# printf "=> Installing Docker Extension will fail unless we run an apt-get update in the VM <="
+# ssh -o StrictHostKeyChecking=no $username@$fullDnsName -i "$rsaKeysLocation/$adminKeyPairName" "sudo apt-get update" 
 
 printf "=> create docker tls certs <="
 mkdir -p "$tlsCertLocation"
