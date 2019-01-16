@@ -49,10 +49,10 @@ subnetPrefix="10.0.0.0/24"
 stdStorageAccountName="${baseNameLower}storage${versionSuffix}${storageAccountRandom}"
 
 # Set variables for VM
-vmSize="Standard_DS1_V2"
+vmSize="Standard_D2S_V3"
 publisher="Canonical"
 offer="UbuntuServer"
-sku="16.04.0-LTS"
+sku="18.04.0-LTS"
 version="latest"
 vmName="${baseName}"
 nicName="${baseName}NIC"
