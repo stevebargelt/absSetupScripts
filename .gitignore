@@ -6,3 +6,6 @@
 #we do not want to check in the keys or certs. That would be baaaaaaad.
 keys/
 certs/
+override.tf
+secret.tfvars
+.terraform
