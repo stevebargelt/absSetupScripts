@@ -206,14 +206,14 @@ resource "azurerm_virtual_machine" "main" {
     }  
   }
 
-    # connection {
-    #     host = "sometestdn.ukwest.cloudapp.azure.com"
-    #     user = "testuser"
-    #     type = "ssh"
-    #     private_key = "${file("~/.ssh/id_rsa_unencrypted")}"
-    #     timeout = "1m"
-    #     agent = true
-    # }
+    connection {
+        host = "${azureDNSName}"
+        user = "absadmin"
+        type = "ssh"
+        private_key = "${file("${local.keysLocation}/${local.adminKeyPairName}")}"
+        timeout = "1m"
+        agent = true
+    }
 
     # provisioner "remote-exec" {
     #     inline = [
