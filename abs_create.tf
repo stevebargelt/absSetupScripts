@@ -3,9 +3,10 @@ variable "baseName" {}
 variable "version" {}
 variable "customDNSBase" {}
 variable "location" {}
+variable "adminUsername" {}
 
 
-# create an override.tf with the real subscription_id
+# add your real subscription_id to secret.tfvars
 provider "azurerm" {
   version = "=1.21.0"
   subscription_id = "${var.azure_subscription_id}"
@@ -13,19 +14,48 @@ provider "azurerm" {
 
 # Change the following per your environment
 locals {
-  baseName = "abs"
-  version = "2"
-  adminKeyPairName = "id_${var.baseName}${var.version}_rsa"
-  keysLocation = "./keys/${var.baseName}${var.version}"
-  customDNSName="${var.baseName}${var.version}.${var.customDNSBase}"
-  azureDNSName="${var.baseName}${var.version}.${var.location}.cloudapp.azure.com"
+  fullName = "${var.baseName}${var.version}"
+  adminKeyPairName = "id_${local.fullName}_rsa"
+  keysLocation = "./keys/${local.fullName}"
+  customDNSName="${local.fullName}.${var.customDNSBase}"
+  azureDNSName="${local.fullName}.${var.location}.cloudapp.azure.com"
 }
 
 # Create a resource group
 resource "azurerm_resource_group" "test" {
-  name     = "${var.baseName}${var.version}"
+  name     = "${local.fullName}"
   location = "${var.location}"
 }
+
+####################################
+##### TLS KEY CREATION         #####
+####################################
+
+# if we don't add thes files as "recources" then the script fails because
+# the files are not present in the VM create step... but they WOJLD be created by 
+# the local-exec step - but terraform doesn't know that. 
+resource "local_file" "private_key" {
+    content = "just dummy data"
+    filename = "${local.keysLocation}/${local.adminKeyPairName}"
+}
+resource "local_file" "public_key" {
+    content = "just dummy data"
+    filename = "${local.keysLocation}/${local.adminKeyPairName}.pub"
+}
+
+resource "null_resource" "test" {
+  provisioner "local-exec" {
+    command = "scripts/tls-create.sh ${var.adminUsername} ${azurerm_resource_group.test.name} ${azurerm_resource_group.test.name}-vm ${local.keysLocation} ${local.adminKeyPairName}"
+  }
+}
+
+data "local_file" "private_key" {
+    filename = "${local.keysLocation}/${local.adminKeyPairName}"
+}
+data "local_file" "public_key" {
+    filename = "${local.keysLocation}/${local.adminKeyPairName}.pub"
+}
+
 
 # Create a virtual network within the resource group
 resource "azurerm_virtual_network" "test" {
@@ -48,6 +78,7 @@ resource "azurerm_public_ip" "test" {
   resource_group_name  = "${azurerm_resource_group.test.name}"
   location             = "${azurerm_resource_group.test.location}"
   allocation_method    = "Static"
+  domain_name_label    = "${local.fullName}"
 }
 
 resource "azurerm_network_security_group" "test" {
@@ -136,10 +167,10 @@ resource "azurerm_network_interface" "test" {
   network_security_group_id = "${azurerm_network_security_group.test.id}"
   
   ip_configuration {
-    name                          = "testconfiguration1"
+    name                          = "ip_config_1"
     subnet_id                     = "${azurerm_subnet.test.id}"
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = "${azurerm_public_ip.test.ip_address}"
+    public_ip_address_id          = "${azurerm_public_ip.test.id}"
   }
 }
 
@@ -153,7 +184,7 @@ resource "random_id" "randomId" {
 }
 
 resource "azurerm_storage_account" "test" {
-  name                     = "${var.baseName}${var.version}registry${random_id.randomId.hex}"
+  name                     = "${local.fullName}registry${random_id.randomId.hex}"
   account_kind             = "BlobStorage"
   resource_group_name      = "${azurerm_resource_group.test.name}"
   location                 = "${azurerm_resource_group.test.location}"
@@ -161,20 +192,15 @@ resource "azurerm_storage_account" "test" {
   account_replication_type = "LRS"
 }
 
-resource "tls_private_key" "example" {
-  algorithm = "RSA"
-  rsa_bits  = 4096
-}
-
-resource "azurerm_virtual_machine" "main" {
-  name                  = "${var.baseName}${var.version}-vm"
+resource "azurerm_virtual_machine" "test" {
+  name                  = "${local.fullName}-vm"
   location              = "${azurerm_resource_group.test.location}"
   resource_group_name   = "${azurerm_resource_group.test.name}"
   network_interface_ids = ["${azurerm_network_interface.test.id}"]
   vm_size               = "Standard_DS1_v2"
 
   # Uncomment this line to delete the OS disk automatically when deleting the VM
-  # delete_os_disk_on_termination = true
+  delete_os_disk_on_termination = true
 
   # Uncomment this line to delete the data disks automatically when deleting the VM
   # delete_data_disks_on_termination = true
@@ -194,35 +220,37 @@ resource "azurerm_virtual_machine" "main" {
   }
 
   os_profile {
-    computer_name  = "${var.baseName}${var.version}"
-    admin_username = "absadmin"
+    computer_name  = "${local.fullName}"
+    admin_username = "${var.adminUsername}"
   }
   os_profile_linux_config {
     disable_password_authentication = true
   
     ssh_keys {
-      key_data = "${file("${local.keysLocation}/${local.adminKeyPairName}.pub")}"
-      path = "/home/absadmin/.ssh/authorized_keys"
+      //key_data = "${file("${local.keysLocation}/${local.adminKeyPairName}.pub")}"
+      key_data = "${local_file.public_key.content}"
+      path = "/home/${var.adminUsername}/.ssh/authorized_keys"
     }  
   }
 
     connection {
-        host = "${azureDNSName}"
-        user = "absadmin"
+        host = "${azurerm_public_ip.test.fqdn}"
+        user = "${var.adminUsername}"
         type = "ssh"
-        private_key = "${file("${local.keysLocation}/${local.adminKeyPairName}")}"
+        # private_key = "${file("${local.keysLocation}/${local.adminKeyPairName}")}"
+        private_Key = "${local_file.private_key.content}"
         timeout = "1m"
         agent = true
     }
 
-    # provisioner "remote-exec" {
-    #     inline = [
-    #       "sudo apt-get update",
-    #       "sudo apt-get install docker.io -y",
-    #       "git clone https://github.com/somepublicrepo.git",
-    #       "cd Docker-sample",
-    #       "sudo docker build -t mywebapp .",
-    #       "sudo docker run -d -p 5000:5000 mywebapp"
-    #     ]
-    # }  
+    provisioner "remote-exec" {
+        inline = [
+          "sudo apt-get update",
+          "sudo apt-get install docker.io -y",
+          # "git clone https://github.com/somepublicrepo.git",
+          # "cd Docker-sample",
+          # "sudo docker build -t mywebapp .",
+          # "sudo docker run -d -p 5000:5000 mywebapp"
+        ]
+    }  
 }
