@@ -30,32 +30,23 @@ resource "azurerm_resource_group" "test" {
 ####################################
 ##### TLS KEY CREATION         #####
 ####################################
-
-# if we don't add thes files as "recources" then the script fails because
-# the files are not present in the VM create step... but they WOJLD be created by 
-# the local-exec step - but terraform doesn't know that. 
-resource "local_file" "private_key" {
-    content = "just dummy data"
-    filename = "${local.keysLocation}/${local.adminKeyPairName}"
-}
-resource "local_file" "public_key" {
-    content = "just dummy data"
-    filename = "${local.keysLocation}/${local.adminKeyPairName}.pub"
-}
-
-resource "null_resource" "test" {
-  provisioner "local-exec" {
-    command = "scripts/tls-create.sh ${var.adminUsername} ${azurerm_resource_group.test.name} ${azurerm_resource_group.test.name}-vm ${local.keysLocation} ${local.adminKeyPairName}"
-  }
+module "ssh_key_pair" {
+  source                = "git::https://github.com/cloudposse/terraform-tls-ssh-key-pair.git?ref=master"
+  namespace             = "id"
+  stage                 = "${local.fullName}"
+  name                  = "rsa"
+  ssh_public_key_path   = "${local.keysLocation}"
+  delimiter             = "_"
+  private_key_extension = ""
+  public_key_extension  = ".pub"
+  chmod_command         = "chmod 600 %v"
 }
 
-data "local_file" "private_key" {
-    filename = "${local.keysLocation}/${local.adminKeyPairName}"
-}
-data "local_file" "public_key" {
-    filename = "${local.keysLocation}/${local.adminKeyPairName}.pub"
-}
 
+# resource "tls_private_key" "example" {
+#   algorithm   = "RSA"
+#   rsa_bits = "4096"
+# }
 
 # Create a virtual network within the resource group
 resource "azurerm_virtual_network" "test" {
@@ -227,8 +218,9 @@ resource "azurerm_virtual_machine" "test" {
     disable_password_authentication = true
   
     ssh_keys {
-      //key_data = "${file("${local.keysLocation}/${local.adminKeyPairName}.pub")}"
-      key_data = "${local_file.public_key.content}"
+      #key_data = "${file("${local.keysLocation}/${local.adminKeyPairName}.pub")}"
+      # key_data = "${local_file.public_key.content}"
+      key_data = "${module.ssh_key_pair.public_key}"
       path = "/home/${var.adminUsername}/.ssh/authorized_keys"
     }  
   }
@@ -237,8 +229,8 @@ resource "azurerm_virtual_machine" "test" {
         host = "${azurerm_public_ip.test.fqdn}"
         user = "${var.adminUsername}"
         type = "ssh"
-        # private_key = "${file("${local.keysLocation}/${local.adminKeyPairName}")}"
-        private_Key = "${local_file.private_key.content}"
+        private_key = "${file("${local.keysLocation}/${local.adminKeyPairName}")}"
+        # private_Key = "${local_file.private_key.content}"
         timeout = "1m"
         agent = true
     }
