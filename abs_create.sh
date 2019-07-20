@@ -5,10 +5,11 @@
 ########################################################
 
 #this will be the name of the resource group and the VM + all other compoents will use this as the base of their names
-baseName="abs" 
+baseName="absv2" 
 
-# for testing and rapidly creating multiple versions for tutorials or testing. Script will create something like dockerBuild01 <- given a suffix of 01 and a baseName of dockerBuild
-versionSuffix="3"
+# for testing and rapidly creating multiple versions for tutorials or testing. 
+# Script will create something like dockerBuild01 <- given a suffix of 01 and a baseName of dockerBuild
+versionSuffix="01"
 
 #Storage accounts names must be unique. Adding a random number may help with that. Kept it to 3 
 #  digits because they also must be under 24 characters. Should probs add some checks fof this.
@@ -24,7 +25,7 @@ azureAccountName="Visual Studio Enterprise"
 azureSubscription="61ed2619-32a9-45d9-8e24-771cc7c48d4a"
 
 #VM Admin user information
-username="dockeruser"
+adminusername="docker admin"
 
 #custom dns name
 customDnsBase="harebrained-apps.com"
@@ -55,7 +56,7 @@ stdStorageAccountName="${baseNameLower}storage${versionSuffix}${storageAccountRa
 vmSize="Standard_D2S_V3"
 publisher="Canonical"
 offer="UbuntuServer"
-sku="16.04.0-LTS"
+sku="18.04-LTS"
 version="latest"
 vmName="${baseName}"
 nicName="${baseName}NIC"
@@ -82,7 +83,7 @@ SCRIPTS_LOCATION=$PWD
 #### The script actually begins...                  ####
 ########################################################
 
-#TODO: the docker running/stopped/non-existant code could use updating
+# TODO: the docker running/stopped/non-existant code could use updating
 RUNNING=$(docker inspect --format="{{ .State.Running }}" azureCli 2> /dev/null)
 
 if [ $? -eq 1 ]; then
@@ -100,17 +101,16 @@ if [ "$RUNNING" == false ]; then
 	docker exec -it azureCli az login  
 fi
 
-#Please store the private key securly once this is done!
+# Please store the private key securly once this is done!
 printf "=> Creating admin SSH keypair: $rsaKeysLocation/$adminKeyPairName <="
 mkdir -p $rsaKeysLocation
-ssh-keygen -t rsa -b 2048 -C "$username@Azure-$rgName-$vmName" -f "$rsaKeysLocation/$adminKeyPairName" -q -N ""
+ssh-keygen -t rsa -b 2048 -C "$adminusername@Azure-$rgName-$vmName" -f "$rsaKeysLocation/$adminKeyPairName" -q -N ""
 
-set -xe
+# set -xe
 
-docker exec -it azureCli az account set --subscription "$azureSubscription"
+docker exec -it azureCli az account set --subscription $azureSubscription
 
 echo "=> Create resource group <="
-# Create Resource Group
 docker exec -it azureCli az group create --name $rgName --location $location
 
 echo "=> Create  VNet <="
@@ -133,7 +133,9 @@ docker exec -it azureCli az network public-ip create --resource-group $rgName \
 
 echo "=> Get IP Address <=<"
 
-publicIPAddress=$(docker exec -it azureCli az network public-ip show --resource-group $rgName --name $pipName |grep "ipAddress" | awk -F ":" '{print $2}' |tr -d '\r' | tr -d ',' | tr -d '"')
+publicIPAddress=$(docker exec -it azureCli az network public-ip show --resource-group $rgName --name $pipName |grep "ipAddress" | awk -F ":" '{print $2}' |tr -d ' ' |tr -d '\r' | tr -d ',' | tr -d '"')
+publicIPAddress="$(echo "${publicIPAddress}" | tr -d '[:space:]')"
+
 echo "PublicIP:$publicIPAddress"
 
 echo "=> Create network security group <="
@@ -192,17 +194,6 @@ docker exec -it azureCli az network nsg rule create --protocol tcp \
     --nsg-name $nsgName \
     --name allow-jenkins-JNLP
 
-# Added the two following rules in part three of tutorial 
-echo "=> Create allow-docker-registry rule  <="
-docker exec -it azureCli az network nsg rule create --protocol tcp \
-    --direction inbound \
-    --priority 1040 \
-    --destination-port-range 5000 \
-    --access allow \
-    --resource-group $rgName \
-    --nsg-name $nsgName \
-    --name allow-docker-registry
-
 echo "=> Create allow-https rule  <="
 docker exec -it azureCli az network nsg rule create --protocol tcp \
     --direction inbound \
@@ -213,16 +204,6 @@ docker exec -it azureCli az network nsg rule create --protocol tcp \
     --nsg-name $nsgName \
     --name allow-https
 
-#Added the registry blob storage in part 3 of the tutorial
-echo "=> Create the Docker Registry Blob Storage <="
-docker exec -it azureCli az storage account create \
-    --resource-group $rgName \
-    --name ${baseNameLower}${versionSuffix}registry${storageAccountRandom} \
-    --kind BlobStorage \
-    --sku Standard_LRS \
-    --access-tier Hot \
-    --location $location
-
 echo "=> Create the VM <="
 docker exec -it azureCli az vm create \
     --resource-group $rgName \
@@ -231,23 +212,47 @@ docker exec -it azureCli az vm create \
     --size $vmSize \
     --nics $nicName \
     --image $publisher:$offer:$sku:$version \
-    --admin-username $username \
+    --admin-username $adminusername \
     --ssh-key-value "/config/$rsaKeysLocation/$adminKeyPairName.pub"
 
-# publicIPAddress=$(docker exec -it azureCli az network public-ip show --resource-group $rgName --name $pipName |grep "ipAddress" | awk -F ":" '{print $2}' |tr -d '\r' | tr -d ',' | tr -d '"')
-# echo "PublicIP:$publicIPAddress"
-
-# printf "=> Installing Docker Extension will fail unless we run an apt-get update in the VM <="
-# ssh -o StrictHostKeyChecking=no $username@$fullDnsName -i "$rsaKeysLocation/$adminKeyPairName" "sudo apt-get update" 
-
-printf "=> create docker tls certs <="
+printf "=> create docker tls certs <=\n"
 mkdir -p "$tlsCertLocation"
 sh create-docker-tls.sh $customDnsName $fullDnsName $publicIPAddress $privateIPAddress $tlsCertLocation
 
-printf "=> Add Docker extension to VM <="
-sh add-docker-ext.sh $rgName $vmName $tlsCertLocation
+# ssh -o StrictHostKeyChecking=no $adminusername@$publicIPAddress -i "$rsaKeysLocation/$adminKeyPairName" "sudo apt-get update" 
+
+printf "=> copying docker tls certs to VM via scp <=\n"
+printf "Public IP Addres=$publicIPAddress"
+printf "scp -o StrictHostKeyChecking=no -i "$rsaKeysLocation/$adminKeyPairName" $tlsCertLocation/{ca,server-cert,server-key}.pem $adminusername@$publicIPAddress:~ \n"
+scp -o StrictHostKeyChecking=no -i "$rsaKeysLocation/$adminKeyPairName" $tlsCertLocation/{ca,server-cert,server-key}.pem $adminusername@$publicIPAddress:~
+
+printf "=> copying docker systemd siles to VM via scp <="
+scp -o StrictHostKeyChecking=no -i "$rsaKeysLocation/$adminKeyPairName" ./override.conf $adminusername@$publicIPAddress:~
+scp -o StrictHostKeyChecking=no -i "$rsaKeysLocation/$adminKeyPairName" ./daemon.json $adminusername@$publicIPAddress:~
+
+
+printf "=> Almost Finished <=\n"
+printf "ssh -i $rsaKeysLocation/$adminKeyPairName $adminusername@$publicIPAddress\n"
+printf "then run the custom-setup.sh steps to make sure they are correct."
+
+
+echo "=> Convert custom script to base64 <="
+CUSTOM_SETUP_SCRIPT="$(cat custom-setup.sh| base64)"
+
+echo "{
+    \"script\": \"$CUSTOM_SETUP_SCRIPT\"
+}" > prot.json
+
+printf "=> Run Custom Script in VM <=\n"
+docker exec -it azureCli az vm extension set \
+    --resource-group $rgName \
+    --vm-name $vmName --name customScript \
+    --publisher Microsoft.Azure.Extensions \
+    --protected-settings '{"fileUris": ["https://raw.githubusercontent.com/Microsoft/dotnet-core-sample-templates/master/dotnet-core-music-linux/scripts/config-music.sh"],"commandToExecute": "./config-music.sh"}'    
+
+    # --protected-settings ./prot.json
 
 printf "=> Finished <=\n"
-printf "Connect to docker:\n"
-printf "cd $tlsCertLocation"
-printf "DO THIS: docker --tlsverify --tlscacert=ca.pem --tlscert=cert.pem --tlskey=key.pem -H=tcp://$publicIPAddress:2376 version"
+printf "Connect to docker TLS Enabled to ensure it worked:\n"
+printf "cd $tlsCertLocation \n"
+printf "docker --tlsverify --tlscacert=ca.pem --tlscert=cert.pem --tlskey=key.pem -H=tcp://$publicIPAddress:2376 version"

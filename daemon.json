@@ -1,0 +1,7 @@
+{
+    "hosts": ["tcp://0.0.0.0:2376","fd://"],
+    "tlscacert": "/etc/docker/ssl/ca.pem",
+    "tlscert": "/etc/docker/ssl/server-cert.pem",
+    "tlskey": "/etc/docker/ssl/server-key.pem",
+    "tlsverify": true
+  }
