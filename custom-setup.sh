@@ -57,5 +57,5 @@ sudo systemctl start docker
 
 # Run docker as non-root user (although docker group is near root)
 #sudo groupadd docker
-echo "Run Docker as non-root"
-sudo usermod -aG docker $USER
+# echo "Run Docker as non-root"
+# sudo usermod -aG docker $USER
