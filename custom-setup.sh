@@ -32,25 +32,30 @@ sudo chmod +x /usr/local/bin/docker-compose
 
 echo "Setting up Docker TLS & Securing the Daemon..."
 
+echo "Move TLS Certs"
 sudo mkdir -p /etc/docker/ssl
 # TODO: Need to get admin username from main script
 sudo mv /home/absadmin/ca.pem /etc/docker/ssl/
 sudo mv /home/absadmin/server-cert.pem /etc/docker/ssl/
 sudo mv /home/absadmin/server-key.pem /etc/docker/ssl/
 
+echo "Move daemon.json"
 sudo mv /home/absadmin/daemon.json /etc/docker/
 
+echo "Move override.conf"
 sudo mkdir -p /etc/systemd/system/docker.service.d/
 sudo mv /home/absadmin/override.conf /etc/systemd/system/docker.service.d/
 
-# Reload the systemd daemon
+echo "Reload the systemd daemon"
 sudo systemctl daemon-reload
 
+echo "Enable docker"
 sudo systemctl enable docker
 
-# Restart Docker
+echo "Restart Docker"
 sudo systemctl start docker
 
 # Run docker as non-root user (although docker group is near root)
-sudo groupadd docker
+#sudo groupadd docker
+echo "Run Docker as non-root"
 sudo usermod -aG docker $USER
