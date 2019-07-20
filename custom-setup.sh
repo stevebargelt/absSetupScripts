@@ -34,7 +34,10 @@ echo "Setting up Docker TLS & Securing the Daemon..."
 
 sudo mkdir -p /etc/docker/ssl
 # TODO: Need to get admin username from main script
-sudo mv /home/absadmin/{ca,server-cert,server-key}.pem /etc/docker/ssl
+sudo mv /home/absadmin/ca.pem /etc/docker/ssl/
+sudo mv /home/absadmin/server-cert.pem /etc/docker/ssl/
+sudo mv /home/absadmin/server-key.pem /etc/docker/ssl/
+
 sudo mv /home/absadmin/daemon.json /etc/docker/
 
 sudo mkdir -p /etc/systemd/system/docker.service.d/
