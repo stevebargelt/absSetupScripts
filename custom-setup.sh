@@ -55,6 +55,9 @@ sudo systemctl enable docker
 echo "Restart Docker"
 sudo systemctl start docker
 
+echo "Reboot VM"
+sudo reboot
+
 # Run docker as non-root user (although docker group is near root)
 #sudo groupadd docker
 # echo "Run Docker as non-root"
