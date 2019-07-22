@@ -52,14 +52,17 @@ sudo systemctl daemon-reload
 echo "Enable docker"
 sudo systemctl enable docker
 
-echo "Restart Docker"
+echo "Start Docker"
 sudo systemctl start docker
+
+echo "Restart Docker"
+sudo systemctl restart docker
 
 # echo "Reboot VM"
 # sudo reboot
 
-echo "Reboot VM"
-sudo shutdown -r +2
+# echo "Reboot VM"
+# sudo shutdown -r +2
 
 # Run docker as non-root user (although docker group is near root)
 #sudo groupadd docker
