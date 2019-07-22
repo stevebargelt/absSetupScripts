@@ -1,5 +1,13 @@
 #!/bin/bash
 
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
+# set -x
+# set -e
+
 ########################################################
 #### Change the following to customize your install ####
 ########################################################
@@ -9,33 +17,38 @@ baseName="absv2"
 
 # for testing and rapidly creating multiple versions for tutorials or testing. 
 # Script will create something like dockerBuild01 <- given a suffix of 01 and a baseName of dockerBuild
-versionSuffix="01"
-
-#Storage accounts names must be unique. Adding a random number may help with that. Kept it to 3 
-#  digits because they also must be under 24 characters. Should probs add some checks fof this.
-storageAccountRandom=$((100 + RANDOM % 899)) 
+versionSuffix="019"
 
 #The Azure location for your resources
 location="westus2"
 
 #Your Azure account name.
-azureAccountName="Visual Studio Enterprise"
+azureAccountName="VSE02"
 
 #Your Azure Subscription
-azureSubscription="61ed2619-32a9-45d9-8e24-771cc7c48d4a"
+azureSubscription="c7e800cb-0ee6-4175-9605-a6b97c6f419f"
 
 #VM Admin user information
-adminusername="docker admin"
+adminusername="absadmin"
 
 #custom dns name
 customDnsBase="harebrained-apps.com"
 
 ########################################################
-#### The remainder can be changed but not required  ####    
+#### Docker TLS Certificate Details                 ####    
 ########################################################
 
-#dns names and storage account names can't have upppercase letters
-baseNameLower=$(echo "$baseName" | tr '[:upper:]' '[:lower:]')
+tlsCountry=US
+tlsState=Washington
+tlsLocality=Seattle
+tlsOrganization=harebrained-apps.com
+tlsOrganizationalUnit=SoftwareDev
+tlsEmail=steve@bargelt.com
+tlsPassphrase=correcthorebatterystaple
+
+########################################################
+#### The remainder can be changed but not required  ####    
+########################################################
 
 echo "=> basenamelower <="
 echo $baseNameLower
@@ -48,9 +61,6 @@ vnetName="${baseName}vnet"
 vnetPrefix="10.0.0.0/16"
 subnetName="default"
 subnetPrefix="10.0.0.0/24"
-
-# Set variables for storage
-stdStorageAccountName="${baseNameLower}storage${versionSuffix}${storageAccountRandom}"
 
 # Set variables for VM
 vmSize="Standard_D2S_V3"
@@ -101,12 +111,14 @@ if [ "$RUNNING" == false ]; then
 	docker exec -it azureCli az login  
 fi
 
+printf "=> Setting the 'az' alias for azureCLi in Docker container <=\n"
+alias az="docker exec -it azureCli az"
+
 # Please store the private key securly once this is done!
-printf "=> Creating admin SSH keypair: $rsaKeysLocation/$adminKeyPairName <="
+printf "=> Creating admin SSH keypair: $rsaKeysLocation/$adminKeyPairName <=\n"
+printf "=> ${RED}***** Please store the private key securly once this is done! *****${NC}  <=\n"
 mkdir -p $rsaKeysLocation
 ssh-keygen -t rsa -b 2048 -C "$adminusername@Azure-$rgName-$vmName" -f "$rsaKeysLocation/$adminKeyPairName" -q -N ""
-
-# set -xe
 
 docker exec -it azureCli az account set --subscription $azureSubscription
 
@@ -136,7 +148,7 @@ echo "=> Get IP Address <=<"
 publicIPAddress=$(docker exec -it azureCli az network public-ip show --resource-group $rgName --name $pipName |grep "ipAddress" | awk -F ":" '{print $2}' |tr -d ' ' |tr -d '\r' | tr -d ',' | tr -d '"')
 publicIPAddress="$(echo "${publicIPAddress}" | tr -d '[:space:]')"
 
-echo "PublicIP:$publicIPAddress"
+printf "PublicIP:$publicIPAddress\n"
 
 echo "=> Create network security group <="
 docker exec -it azureCli az network nsg create --resource-group $rgName \
@@ -217,12 +229,14 @@ docker exec -it azureCli az vm create \
 
 printf "=> create docker tls certs <=\n"
 mkdir -p "$tlsCertLocation"
-sh create-docker-tls.sh $customDnsName $fullDnsName $publicIPAddress $privateIPAddress $tlsCertLocation
+printf "\n\n"
+printf "sh create-docker-tls.sh $customDnsName $fullDnsName $publicIPAddress $privateIPAddress $tlsCertLocation $tlsCountry $tlsState $tlsLocality $tlsOrganization $tlsOrganizationalUnit $tlsEmail $tlsPassphrase"
+printf "\n\n"
+sh create-docker-tls.sh $customDnsName $fullDnsName $publicIPAddress $privateIPAddress $tlsCertLocation $tlsCountry $tlsState $tlsLocality $tlsOrganization $tlsOrganizationalUnit $tlsEmail $tlsPassphrase
 
-# ssh -o StrictHostKeyChecking=no $adminusername@$publicIPAddress -i "$rsaKeysLocation/$adminKeyPairName" "sudo apt-get update" 
+# sh create-docker-tls.sh $customDnsName $fullDnsName $publicIPAddress $privateIPAddress $tlsCertLocation
 
 printf "=> copying docker tls certs to VM via scp <=\n"
-printf "Public IP Addres=$publicIPAddress"
 printf "scp -o StrictHostKeyChecking=no -i "$rsaKeysLocation/$adminKeyPairName" $tlsCertLocation/{ca,server-cert,server-key}.pem $adminusername@$publicIPAddress:~ \n"
 scp -o StrictHostKeyChecking=no -i "$rsaKeysLocation/$adminKeyPairName" $tlsCertLocation/{ca,server-cert,server-key}.pem $adminusername@$publicIPAddress:~
 
@@ -230,29 +244,23 @@ printf "=> copying docker systemd siles to VM via scp <="
 scp -o StrictHostKeyChecking=no -i "$rsaKeysLocation/$adminKeyPairName" ./override.conf $adminusername@$publicIPAddress:~
 scp -o StrictHostKeyChecking=no -i "$rsaKeysLocation/$adminKeyPairName" ./daemon.json $adminusername@$publicIPAddress:~
 
-
-printf "=> Almost Finished <=\n"
-printf "ssh -i $rsaKeysLocation/$adminKeyPairName $adminusername@$publicIPAddress\n"
-printf "then run the custom-setup.sh steps to make sure they are correct."
-
-
-echo "=> Convert custom script to base64 <="
-CUSTOM_SETUP_SCRIPT="$(cat custom-setup.sh| base64)"
-
-echo "{
-    \"script\": \"$CUSTOM_SETUP_SCRIPT\"
-}" > prot.json
+printf "${GREEN}=> VM Created... <=${NC}\n"
+printf "${GREEN}ssh -i $rsaKeysLocation/$adminKeyPairName $adminusername@$publicIPAddress${NC}\n"
 
 printf "=> Run Custom Script in VM <=\n"
 docker exec -it azureCli az vm extension set \
     --resource-group $rgName \
     --vm-name $vmName --name customScript \
     --publisher Microsoft.Azure.Extensions \
-    --protected-settings '{"fileUris": ["https://raw.githubusercontent.com/Microsoft/dotnet-core-sample-templates/master/dotnet-core-music-linux/scripts/config-music.sh"],"commandToExecute": "./config-music.sh"}'    
+    --protected-settings '{"fileUris": ["https://raw.githubusercontent.com/stevebargelt/absSetupScripts/v2/custom-setup.sh"],"commandToExecute": "./custom-setup.sh"}'    
 
-    # --protected-settings ./prot.json
+printf "${GREEN}=> Finished <=${NC}\n"
+printf "${GREEN}Connect to docker TLS Enabled to everything is working:${NC}\n"
+printf "${GREEN}docker --tlsverify --tlscacert=$tlsCertLocation/ca.pem --tlscert=$tlsCertLocation/cert.pem --tlskey=$tlsCertLocation/key.pem -H=tcp://$publicIPAddress:2376 version${NC}\n\n\n"
 
-printf "=> Finished <=\n"
-printf "Connect to docker TLS Enabled to ensure it worked:\n"
-printf "cd $tlsCertLocation \n"
-printf "docker --tlsverify --tlscacert=ca.pem --tlscert=cert.pem --tlskey=key.pem -H=tcp://$publicIPAddress:2376 version"
+printf "=> Writing Delete Script ${RED}(Careful!)${NC} <= \n"
+echo "#!/bin/bash
+docker exec -it azureCli az group delete -n $rgName --no-wait
+rm -rf $tlsCertLocation
+rm -rf $rsaKeysLocation
+" > $rgName-delete.sh

@@ -58,13 +58,6 @@ sudo systemctl start docker
 echo "Restart Docker"
 sudo systemctl restart docker
 
-# echo "Reboot VM"
-# sudo reboot
-
-# echo "Reboot VM"
-# sudo shutdown -r +2
-
 # Run docker as non-root user (although docker group is near root)
-#sudo groupadd docker
-# echo "Run Docker as non-root"
+# sudo groupadd docker
 # sudo usermod -aG docker $USER

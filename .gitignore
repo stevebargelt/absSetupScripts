@@ -10,3 +10,4 @@ override.tf
 secret.tfvars
 .terraform
 prot.json
+*-delete.sh

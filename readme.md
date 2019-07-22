@@ -1,8 +1,28 @@
-# Jenkins Docker
+# Automated Build System with Jenkins and Docker in Azure Version 2
+
+## Shell Script
+
+Edit the variables in the first 50 lines of the script.
+
+```shell
+
+sh abs_create.sh
+
+```
+
+Get a cup of coffee... this takes a little while.
+
+Creates a delete script for each resource group it creates. Probably only useful while I'm developing and testing. 
+
+```shell
+
+sh abs02-delete.sh
+
+```
 
 ## Terraform
 
-Terraform version is a work in progress. Teh basic infrastructure does get created.
+Terraform version is a work in progress. The basic infrastructure does get created.
 
 ### ToDo:
 
@@ -15,7 +35,6 @@ Terraform version is a work in progress. Teh basic infrastructure does get creat
 Maybe:
 1. Pull backup data to restore state
 1. Use renew or add letsencrypt
-
 
 ### Basics
 
@@ -62,15 +81,3 @@ ssh-add ./keys/abs3/id_abs3_rsa
 ssh absadmin@abs3.westus2.cloudapp.azure.com
 
 ```
-
-## Shell Script
-
-Edit the variables in the first 30 lines of the script.
-
-```shell
-
-sh abs_create.sh
-
-```
-
-Get a cup of coffee... this takes a little while. 
