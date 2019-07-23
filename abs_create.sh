@@ -17,7 +17,7 @@ baseName="absv2"
 
 # for testing and rapidly creating multiple versions for tutorials or testing. 
 # Script will create something like dockerBuild01 <- given a suffix of 01 and a baseName of dockerBuild
-versionSuffix="019"
+versionSuffix="020"
 
 #The Azure location for your resources
 location="westus2"
@@ -55,6 +55,9 @@ echo $baseNameLower
 
 #Resource group info
 rgName="$baseName$versionSuffix"
+
+# Azure Container Registry (ACR) Name
+acrName="${rgName}registry"
 
 # Set variables for VNet
 vnetName="${baseName}vnet"
@@ -234,7 +237,8 @@ printf "sh create-docker-tls.sh $customDnsName $fullDnsName $publicIPAddress $pr
 printf "\n\n"
 sh create-docker-tls.sh $customDnsName $fullDnsName $publicIPAddress $privateIPAddress $tlsCertLocation $tlsCountry $tlsState $tlsLocality $tlsOrganization $tlsOrganizationalUnit $tlsEmail $tlsPassphrase
 
-# sh create-docker-tls.sh $customDnsName $fullDnsName $publicIPAddress $privateIPAddress $tlsCertLocation
+# printf "=> create Azure Container Registry <=\n"
+# sh abs-create-acr.sh $rgName $acrName
 
 printf "=> copying docker tls certs to VM via scp <=\n"
 printf "scp -o StrictHostKeyChecking=no -i "$rsaKeysLocation/$adminKeyPairName" $tlsCertLocation/{ca,server-cert,server-key}.pem $adminusername@$publicIPAddress:~ \n"
@@ -264,3 +268,29 @@ docker exec -it azureCli az group delete -n $rgName --no-wait
 rm -rf $tlsCertLocation
 rm -rf $rsaKeysLocation
 " > $rgName-delete.sh
+
+printf "=> Writing $rgName Notes <= \n"
+echo "
+Public Ip Address: $publicIPAddress
+DNS: $dnsName
+Full DNS: $fullDnsName
+Custom DNS: $rgName.$customDnsName
+Admin User Name: $adminusername
+
+Remote Docker Commands:
+docker --tlsverify --tlscacert=$tlsCertLocation/ca.pem --tlscert=$tlsCertLocation/cert.pem --tlskey=$tlsCertLocation/key.pem -H=tcp://$publicIPAddress:2376 version
+
+SSH:
+ssh -i $rsaKeysLocation/$adminKeyPairName $adminusername@$publicIPAddress
+
+Create Azure Container Registry:
+sh abs-create-acr.sh $rgName $acrName
+
+Set user access to docker:
+sudo usermod -aG docker $USER
+(need to logoff/in to take effect)
+
+Delete Entire Environment:
+sh $rgName-delete.sh
+
+" > $rgName-notes.md

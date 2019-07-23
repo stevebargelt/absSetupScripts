@@ -11,3 +11,4 @@ secret.tfvars
 .terraform
 prot.json
 *-delete.sh
+*-notes.md
